@@ -1,0 +1,14 @@
+.Flowchart-container {
+    width: 100%;
+    height: 100%;
+}
+.Flowchart-svg {
+    width: 100%;
+    height: 100%;
+}
+
+.Flowchart-node {
+    stroke-width: 1px;
+    stroke: #000000;
+    fill: #ffffff;
+}
