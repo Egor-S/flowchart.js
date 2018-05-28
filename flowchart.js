@@ -3,7 +3,6 @@ const nodeWidth = 40;
 const nodeHeight = 20;
 const svgWidth = 300;
 const svgHeight = 300;
-var $flowcharts = [];
 
 const NodeType = {
     ACTION: 1,
@@ -12,6 +11,8 @@ const NodeType = {
     CONDITION: 4,
     END: 5
 };
+
+var $flowcharts = [];
 
 /// Utilities
 /**
@@ -28,6 +29,12 @@ function Node(type) {
     this.captured = false;
     this.x = 0;
     this.y = 0;
+    this.createDOMElement();
+    // Drag config
+    this.DOMElement.addEventListener('mousedown', this.dragStart.bind(this));
+}
+
+Node.prototype.createDOMElement = function () {
     switch (this.type) {
         case NodeType.ACTION:
             this.DOMElement = document.createElementNS(xlmns, "rect");
@@ -48,12 +55,7 @@ function Node(type) {
     }
     this.move(this.x, this.y);
     this.DOMElement.classList.add("Flowchart-node");
-    // Drag config
-    this.DOMElement.addEventListener('mousedown', dragStart.bind(this));
-    this.DOMElement.addEventListener('mouseup', dragEnd.bind(this));
-    this.DOMElement.addEventListener('mouseout', dragEnd.bind(this));
-    this.DOMElement.addEventListener('mousemove', drag.bind(this));
-}
+};
 
 Node.prototype.move = function (x, y) {
     this.x = x;
@@ -86,27 +88,32 @@ Node.prototype.move = function (x, y) {
     }
 };
 
-/// Drag functions
-function dragStart(e) {
+Node.prototype.drag = function (dx, dy) {
+    this.move(this.x + dx, this.y + dy);
+};
+
+Node.prototype.dragStart = function (e) {
+    this.capture();
+    if (this.onCapture) {
+        this.onCapture(this);
+    }
+};
+
+Node.prototype.capture = function () {
     this.captured = true;
-}
-function dragEnd(e) {
+    this.DOMElement.classList.add("Node-captured");
+};
+
+Node.prototype.uncapture = function () {
     this.captured = false;
-}
-function drag(e) {
-    var k = 1.0;
-    if (this.DOMElement.parentNode) {
-        k = svgWidth / this.DOMElement.parentNode.clientWidth;
-    }
-    if (this.captured && e.buttons === 1) {
-        this.move(this.x + k * e.movementX, this.y + k * e.movementY);
-    }
-}
+    this.DOMElement.classList.remove("Node-captured");
+};
 
 /// Flowchart class
 function Flowchart(options) {
     this.nodes = [];
     this.links = [];
+    this.captured = [];
     this.editable = options ? !!options.editable : true;
     this.DOMElement = document.createElement("div");
     if (options) {
@@ -115,15 +122,37 @@ function Flowchart(options) {
     }
     this.DOMElement.classList.add("Flowchart-container");
     this.drawArea = document.createElementNS(xlmns, "svg");
-    this.drawArea.setAttributeNS(null, "viewBox", "0 0 " + svgWidth + " " + svgHeight);
+    setAttr(this.drawArea, "viewBox", "0 0 " + svgWidth + " " + svgHeight);
+    this.drawArea.addEventListener("mouseup", this.dragEndAll.bind(this));
+    this.drawArea.addEventListener("mousemove", this.dragAll.bind(this));
 
-    // this.drawArea.classList.add("Flowchart-svg");
     this.DOMElement.appendChild(this.drawArea);
 }
 
 Flowchart.prototype.addNode = function (node) {
+    node.onCapture = this.nodeHasBeenCaptured.bind(this);
     this.nodes.push(node);
     this.drawArea.appendChild(node.DOMElement);
+};
+
+Flowchart.prototype.nodeHasBeenCaptured = function (node) {
+    this.captured.push(node);
+};
+
+Flowchart.prototype.dragAll = function (e) {
+    if (e.buttons === 1) {
+        var k = svgWidth / this.drawArea.clientWidth;
+        for (var i = 0; i < this.captured.length; i++) {
+            this.captured[i].drag(k * e.movementX, k * e.movementY);
+        }
+    }
+};
+
+Flowchart.prototype.dragEndAll = function (e) {
+    for (var i = 0; i < this.captured.length; i++) {
+        this.captured[i].uncapture();
+    }
+    this.captured = [];
 };
 
 /// Init Flowcharts

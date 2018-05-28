@@ -12,3 +12,7 @@
     stroke: #000000;
     fill: #ffffff;
 }
+
+.Node-captured {
+    stroke: #0000ee;
+}
