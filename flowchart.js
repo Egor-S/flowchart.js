@@ -1,6 +1,8 @@
 const xlmns = "http://www.w3.org/2000/svg";
 const nodeWidth = 40;
 const nodeHeight = 20;
+const svgWidth = 300;
+const svgHeight = 300;
 var $flowcharts = [];
 
 const NodeType = {
@@ -11,17 +13,26 @@ const NodeType = {
     END: 5
 };
 
+/// Utilities
+/**
+ * Alias for `elem.setAttributeNS(null, attr, value)`
+ */
+function setAttr(elem, attr, value) {
+    elem.setAttributeNS(null, attr, String(value));
+}
+
 /// Node class
 function Node(type) {
     this.type = type || NodeType.END;
     this.text = "";
+    this.captured = false;
     this.x = 0;
     this.y = 0;
     switch (this.type) {
         case NodeType.ACTION:
             this.DOMElement = document.createElementNS(xlmns, "rect");
-            this.DOMElement.setAttributeNS(null, "width", nodeWidth);
-            this.DOMElement.setAttributeNS(null, "height", nodeHeight);
+            setAttr(this.DOMElement, "width", nodeWidth);
+            setAttr(this.DOMElement, "height", nodeHeight);
             break;
         case NodeType.CONDITION:
             this.DOMElement = document.createElementNS(xlmns, "polygon");
@@ -33,33 +44,64 @@ function Node(type) {
         case NodeType.END:
         default:
             this.DOMElement = document.createElementNS(xlmns, "circle");
-            this.DOMElement.setAttributeNS(null, "r", "10");
+            setAttr(this.DOMElement, "r", "10");
     }
-    this.DOMElement.classList.add("Flowchart-node");
     this.move(this.x, this.y);
+    this.DOMElement.classList.add("Flowchart-node");
+    // Drag config
+    this.DOMElement.addEventListener('mousedown', dragStart.bind(this));
+    this.DOMElement.addEventListener('mouseup', dragEnd.bind(this));
+    this.DOMElement.addEventListener('mouseout', dragEnd.bind(this));
+    this.DOMElement.addEventListener('mousemove', drag.bind(this));
 }
 
 Node.prototype.move = function (x, y) {
     this.x = x;
     this.y = y;
+    var points;
     switch (this.type) {
         case NodeType.ACTION:
-            this.DOMElement.setAttributeNS(null, "x", this.x - nodeWidth / 2);
-            this.DOMElement.setAttributeNS(null, "y", this.y - nodeHeight / 2);
+            setAttr(this.DOMElement, "x", this.x - nodeWidth / 2);
+            setAttr(this.DOMElement, "y", this.y - nodeHeight / 2);
             break;
         case NodeType.CONDITION:
-            var points = this.x + "," + (this.y - nodeHeight / 2) + " ";
-            points += (this.x - nodeWidth / 2) + "," + this.y + " ";
-            points += this.x + "," + (this.y + nodeHeight / 2) + " ";
-            points += (this.x + nodeWidth / 2) + "," + this.y;
-            this.DOMElement.setAttributeNS(null, "points", points);
+            points = this.x + "," + (this.y - nodeHeight / 2) + " ";   // top
+            points += (this.x - nodeWidth / 2) + "," + this.y + " ";   // left
+            points += this.x + "," + (this.y + nodeHeight / 2) + " ";  // bottom
+            points += (this.x + nodeWidth / 2) + "," + this.y;         // right
+            setAttr(this.DOMElement, "points", points);
+            break;
+        case NodeType.INPUT:
+        case NodeType.OUTPUT:
+            points = (this.x - nodeWidth / 2 + nodeHeight / 4) + "," + (this.y - nodeHeight / 2) + " ";   // left-top
+            points += (this.x - nodeWidth / 2 - nodeHeight / 4) + "," + (this.y + nodeHeight / 2) + " ";  // left-bottom
+            points += (this.x + nodeWidth / 2 - nodeHeight / 4) + "," + (this.y + nodeHeight / 2) + " ";  // right-bottom
+            points += (this.x + nodeWidth / 2 + nodeHeight / 4) + "," + (this.y - nodeHeight / 2);        // right-top
+            setAttr(this.DOMElement, "points", points);
             break;
         case NodeType.END:
         default:
-            this.DOMElement.setAttributeNS(null, "cx", this.x);
-            this.DOMElement.setAttributeNS(null, "cy", this.y);
+            setAttr(this.DOMElement, "cx", this.x);
+            setAttr(this.DOMElement, "cy", this.y);
     }
 };
+
+/// Drag functions
+function dragStart(e) {
+    this.captured = true;
+}
+function dragEnd(e) {
+    this.captured = false;
+}
+function drag(e) {
+    var k = 1.0;
+    if (this.DOMElement.parentNode) {
+        k = svgWidth / this.DOMElement.parentNode.clientWidth;
+    }
+    if (this.captured && e.buttons === 1) {
+        this.move(this.x + k * e.movementX, this.y + k * e.movementY);
+    }
+}
 
 /// Flowchart class
 function Flowchart(options) {
@@ -73,7 +115,7 @@ function Flowchart(options) {
     }
     this.DOMElement.classList.add("Flowchart-container");
     this.drawArea = document.createElementNS(xlmns, "svg");
-    this.drawArea.setAttributeNS(null, "viewBox", "0 0 1000 1000");
+    this.drawArea.setAttributeNS(null, "viewBox", "0 0 " + svgWidth + " " + svgHeight);
 
     // this.drawArea.classList.add("Flowchart-svg");
     this.DOMElement.appendChild(this.drawArea);
@@ -96,8 +138,8 @@ window.addEventListener("load", function () {
         var flowchart = new Flowchart({id: tag.id, classList: tag.classList});
         $flowcharts.push(flowchart);
 
-        var startNode = new Node(NodeType.CONDITION);
-        startNode.move(20, 20);
+        var startNode = new Node(NodeType.INPUT);
+        startNode.move(30, 20);
         flowchart.addNode(startNode);
 
         var newTag = flowchart.DOMElement;
