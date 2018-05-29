@@ -3,13 +3,15 @@ const nodeWidth = 40;
 const nodeHeight = 20;
 const svgWidth = 300;
 const svgHeight = 300;
+const connectionSize = 2.5;
 
 const NodeType = {
     ACTION: 1,
     INPUT: 2,
     OUTPUT: 3,
     CONDITION: 4,
-    END: 5
+    END: 5,
+    START: 6
 };
 
 var $flowcharts = [];
@@ -22,56 +24,81 @@ function setAttr(elem, attr, value) {
     elem.setAttributeNS(null, attr, String(value));
 }
 
+function createConnectionNode() {
+    var elem = document.createElementNS(xlmns, "rect");
+    elem.classList.add("Node-connection");
+    setAttr(elem, "width", connectionSize);
+    setAttr(elem, "height", connectionSize);
+    return elem;
+}
+
 /// Node class
-function Node(type) {
-    this.type = type || NodeType.END;
-    this.text = "";
+function Node(type, text) {
+    this.type = type === undefined ? NodeType.START : type;
+    this.text = text === undefined ? "" : text;
+    this.x = this.y = 0;
     this.captured = false;
-    this.x = 0;
-    this.y = 0;
     this.createDOMElement();
     // Drag config
     this.DOMElement.addEventListener('mousedown', this.dragStart.bind(this));
 }
 
 Node.prototype.createDOMElement = function () {
+    this.DOMElement = document.createElementNS(xlmns, "g");
+    // Figure
     switch (this.type) {
         case NodeType.ACTION:
-            this.DOMElement = document.createElementNS(xlmns, "rect");
-            setAttr(this.DOMElement, "width", nodeWidth);
-            setAttr(this.DOMElement, "height", nodeHeight);
+            this.figureElement = document.createElementNS(xlmns, "rect");
+            setAttr(this.figureElement, "width", nodeWidth);
+            setAttr(this.figureElement, "height", nodeHeight);
             break;
         case NodeType.CONDITION:
-            this.DOMElement = document.createElementNS(xlmns, "polygon");
+            this.figureElement = document.createElementNS(xlmns, "polygon");
             break;
         case NodeType.INPUT:
         case NodeType.OUTPUT:
-            this.DOMElement = document.createElementNS(xlmns, "polygon");
+            this.figureElement = document.createElementNS(xlmns, "polygon");
             break;
         case NodeType.END:
+        case NodeType.START:
         default:
-            this.DOMElement = document.createElementNS(xlmns, "circle");
-            setAttr(this.DOMElement, "r", "10");
+            this.figureElement = document.createElementNS(xlmns, "circle");
+            setAttr(this.figureElement, "r", nodeHeight / 2);
     }
+    this.figureElement.classList.add("Node-figure");
+    // Text
+    this.textElement = document.createElementNS(xlmns, "text");
+    this.textElement.classList.add("Node-text");
+    this.updateText();
+    // Connections
+    this.inputConnection = createConnectionNode();
+    this.outputConnection = createConnectionNode();
+    if (this.type === NodeType.CONDITION) this.output2Connection = createConnectionNode();
+    // Construct DOMElement
+    this.DOMElement.appendChild(this.figureElement);
+    if (this.type !== NodeType.START) this.DOMElement.appendChild(this.inputConnection);
+    if (this.type !== NodeType.END) this.DOMElement.appendChild(this.outputConnection);
+    if (this.type === NodeType.CONDITION) this.DOMElement.appendChild(this.output2Connection);
+    this.DOMElement.appendChild(this.textElement);
     this.move(this.x, this.y);
-    this.DOMElement.classList.add("Flowchart-node");
 };
 
 Node.prototype.move = function (x, y) {
     this.x = x;
     this.y = y;
     var points;
+    // Figure
     switch (this.type) {
         case NodeType.ACTION:
-            setAttr(this.DOMElement, "x", this.x - nodeWidth / 2);
-            setAttr(this.DOMElement, "y", this.y - nodeHeight / 2);
+            setAttr(this.figureElement, "x", this.x - nodeWidth / 2);
+            setAttr(this.figureElement, "y", this.y - nodeHeight / 2);
             break;
         case NodeType.CONDITION:
             points = this.x + "," + (this.y - nodeHeight / 2) + " ";   // top
             points += (this.x - nodeWidth / 2) + "," + this.y + " ";   // left
             points += this.x + "," + (this.y + nodeHeight / 2) + " ";  // bottom
             points += (this.x + nodeWidth / 2) + "," + this.y;         // right
-            setAttr(this.DOMElement, "points", points);
+            setAttr(this.figureElement, "points", points);
             break;
         case NodeType.INPUT:
         case NodeType.OUTPUT:
@@ -79,12 +106,30 @@ Node.prototype.move = function (x, y) {
             points += (this.x - nodeWidth / 2 - nodeHeight / 4) + "," + (this.y + nodeHeight / 2) + " ";  // left-bottom
             points += (this.x + nodeWidth / 2 - nodeHeight / 4) + "," + (this.y + nodeHeight / 2) + " ";  // right-bottom
             points += (this.x + nodeWidth / 2 + nodeHeight / 4) + "," + (this.y - nodeHeight / 2);        // right-top
-            setAttr(this.DOMElement, "points", points);
+            setAttr(this.figureElement, "points", points);
             break;
         case NodeType.END:
+        case NodeType.START:
         default:
-            setAttr(this.DOMElement, "cx", this.x);
-            setAttr(this.DOMElement, "cy", this.y);
+            setAttr(this.figureElement, "cx", this.x);
+            setAttr(this.figureElement, "cy", this.y);
+    }
+    // Text
+    setAttr(this.textElement, "y", this.y);
+    for (var i = 0; i < this.textElement.childNodes.length; i++) {
+        setAttr(this.textElement.childNodes[i], "x", this.x);
+    }
+    // Connections
+    setAttr(this.inputConnection, "x", this.x - connectionSize / 2);
+    setAttr(this.inputConnection, "y", this.y - connectionSize / 2 - nodeHeight / 2);
+    if (this.type === NodeType.CONDITION) {
+        setAttr(this.outputConnection, "x", this.x - connectionSize / 2 - nodeWidth / 2);
+        setAttr(this.outputConnection, "y", this.y - connectionSize / 2);
+        setAttr(this.output2Connection, "x", this.x - connectionSize / 2 + nodeWidth / 2);
+        setAttr(this.output2Connection, "y", this.y - connectionSize / 2);
+    } else {
+        setAttr(this.outputConnection, "x", this.x - connectionSize / 2);
+        setAttr(this.outputConnection, "y", this.y - connectionSize / 2 + nodeHeight / 2);
     }
 };
 
@@ -101,12 +146,31 @@ Node.prototype.dragStart = function (e) {
 
 Node.prototype.capture = function () {
     this.captured = true;
-    this.DOMElement.classList.add("Node-captured");
+    this.figureElement.classList.add("Node-captured");
 };
 
 Node.prototype.uncapture = function () {
     this.captured = false;
-    this.DOMElement.classList.remove("Node-captured");
+    this.figureElement.classList.remove("Node-captured");
+};
+
+Node.prototype.updateText = function() {
+    // todo auto-wrapping
+    var lines = [this.text];
+    // Remove old text
+    while (this.textElement.firstChild) {
+        this.textElement.removeChild(this.textElement.firstChild);
+    }
+    // Create new lines
+    for (var i = 0; i < lines.length; i++) {
+        var line = document.createElementNS(xlmns, "tspan");
+        setAttr(line, "text-anchor", "middle");
+        setAttr(line, "x", this.x);
+        if (i > 0) setAttr(line, "dy", "1.1em");
+        line.appendChild(document.createTextNode(lines[i]));
+        this.textElement.appendChild(line);
+    }
+    setAttr(this.textElement, "dy", ((2 - lines.length) * 1.1 - 0.1) / 2 + "em");  // TODO it's terrible
 };
 
 /// Flowchart class
@@ -122,6 +186,7 @@ function Flowchart(options) {
     }
     this.DOMElement.classList.add("Flowchart-container");
     this.drawArea = document.createElementNS(xlmns, "svg");
+    this.drawArea.classList.add("Flowchart-svg");
     setAttr(this.drawArea, "viewBox", "0 0 " + svgWidth + " " + svgHeight);
     this.drawArea.addEventListener("mouseup", this.dragEndAll.bind(this));
     this.drawArea.addEventListener("mousemove", this.dragAll.bind(this));
@@ -141,7 +206,7 @@ Flowchart.prototype.nodeHasBeenCaptured = function (node) {
 
 Flowchart.prototype.dragAll = function (e) {
     if (e.buttons === 1) {
-        var k = svgWidth / this.drawArea.clientWidth;
+        const k = svgWidth / this.drawArea.clientWidth;
         for (var i = 0; i < this.captured.length; i++) {
             this.captured[i].drag(k * e.movementX, k * e.movementY);
         }
@@ -167,9 +232,13 @@ window.addEventListener("load", function () {
         var flowchart = new Flowchart({id: tag.id, classList: tag.classList});
         $flowcharts.push(flowchart);
 
-        var startNode = new Node(NodeType.INPUT);
-        startNode.move(30, 20);
+        var startNode = new Node(NodeType.CONDITION, "a > 4");
         flowchart.addNode(startNode);
+
+        flowchart.addNode(new Node(NodeType.START, "Н"));
+        flowchart.addNode(new Node(NodeType.END, "END"));
+        flowchart.addNode(new Node(NodeType.ACTION, "a = 3"));
+        flowchart.addNode(new Node(NodeType.OUTPUT, "print: a"));
 
         var newTag = flowchart.DOMElement;
         tag.parentNode.replaceChild(newTag, tag);
