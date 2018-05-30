@@ -220,6 +220,36 @@ Flowchart.prototype.dragEndAll = function (e) {
     this.captured = [];
 };
 
+Flowchart.prototype.serialize = function () {
+    var nodes = [];
+    var nodeRef = {};
+    for (var i = 0; i < this.nodes.length; i++) {
+        nodeRef[this.nodes[i]] = i;
+        nodes.push({
+            type: this.nodes[i].type,
+            x: this.nodes[i].x,
+            y: this.nodes[i].y,
+            text: this.nodes[i].text
+        });
+    }
+    // TODO serialize links
+    return {editable: this.editable, nodes: nodes, links: []};
+};
+
+/**
+ * This method works correctly only with empty Flowchart
+ */
+Flowchart.prototype.load = function (serializedFlowchart) {
+    this.editable = serializedFlowchart.editable !== undefined ? serializedFlowchart.editable : true;
+    const nodes = serializedFlowchart.nodes;
+    for (var i = 0; i < nodes.length; i++) {
+        var newNode = new Node(nodes[i].type, nodes[i].text);
+        newNode.move(nodes[i].x, nodes[i].y);
+        this.addNode(newNode);
+    }
+    // TODO load links
+};
+
 /// Init Flowcharts
 /**
  * Replace all <Flowchart> tags with Flowchart.DOMElement.
@@ -232,13 +262,9 @@ window.addEventListener("load", function () {
         var flowchart = new Flowchart({id: tag.id, classList: tag.classList});
         $flowcharts.push(flowchart);
 
-        var startNode = new Node(NodeType.CONDITION, "a > 4");
-        flowchart.addNode(startNode);
-
-        flowchart.addNode(new Node(NodeType.START, "Н"));
-        flowchart.addNode(new Node(NodeType.END, "END"));
-        flowchart.addNode(new Node(NodeType.ACTION, "a = 3"));
-        flowchart.addNode(new Node(NodeType.OUTPUT, "print: a"));
+        if (window.localStorage.flowchart !== undefined) {  // TODO test only
+            flowchart.load(JSON.parse(window.localStorage.flowchart));
+        }
 
         var newTag = flowchart.DOMElement;
         tag.parentNode.replaceChild(newTag, tag);
