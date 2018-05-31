@@ -6,12 +6,19 @@
     border: 1px solid gray;
 }
 
+.Flowchart-link {
+    stroke-width: 0.3px;
+    stroke: #000000;
+    fill: transparent;
+}
+
 .Node-figure {
     stroke-width: 0.3px;
     stroke: #000000;
     fill: #ffffff;
 }
 .Node-text {
+    pointer-events: none;
     user-select: none;
     font-size: 4px;
 }
@@ -22,6 +29,9 @@
 }
 .Node-connection:hover {
     cursor: pointer;
+}
+.Node-connection-active {
+    stroke: #ee0000;
 }
 
 .Node-captured {

@@ -39,8 +39,6 @@ function Node(type, text) {
     this.x = this.y = 0;
     this.captured = false;
     this.createDOMElement();
-    // Drag config
-    this.DOMElement.addEventListener('mousedown', this.dragStart.bind(this));
 }
 
 Node.prototype.createDOMElement = function () {
@@ -76,11 +74,22 @@ Node.prototype.createDOMElement = function () {
     if (this.type === NodeType.CONDITION) this.output2Connection = createConnectionNode();
     // Construct DOMElement
     this.DOMElement.appendChild(this.figureElement);
-    if (this.type !== NodeType.START) this.DOMElement.appendChild(this.inputConnection);
-    if (this.type !== NodeType.END) this.DOMElement.appendChild(this.outputConnection);
-    if (this.type === NodeType.CONDITION) this.DOMElement.appendChild(this.output2Connection);
+    if (this.type !== NodeType.START) {
+        this.inputConnection.addEventListener("mousedown", this.connect(0).bind(this));
+        this.DOMElement.appendChild(this.inputConnection);
+    }
+    if (this.type !== NodeType.END) {
+        this.outputConnection.addEventListener("mousedown", this.connect(1).bind(this));
+        this.DOMElement.appendChild(this.outputConnection);
+    }
+    if (this.type === NodeType.CONDITION) {
+        this.output2Connection.addEventListener("mousedown", this.connect(2).bind(this));
+        this.DOMElement.appendChild(this.output2Connection);
+    }
     this.DOMElement.appendChild(this.textElement);
     this.move(this.x, this.y);
+    // Drag config
+    this.figureElement.addEventListener('mousedown', this.dragStart.bind(this));
 };
 
 Node.prototype.move = function (x, y) {
@@ -173,12 +182,62 @@ Node.prototype.updateText = function() {
     setAttr(this.textElement, "dy", ((2 - lines.length) * 1.1 - 0.1) / 2 + "em");  // TODO it's terrible
 };
 
+Node.prototype.connect = function (connectionIndex) {
+    return function () {
+        switch (connectionIndex) {
+            case 1:
+                this.outputConnection.classList.add("Node-connection-active");
+                break;
+            case 2:
+                this.output2Connection.classList.add("Node-connection-active");
+                break;
+            case 0:
+            default:
+                this.inputConnection.classList.add("Node-connection-active");
+        }
+        if (this.onConnect) {
+            this.onConnect(this, connectionIndex);
+        }
+    };
+};
+
+Node.prototype.disableConnection = function (connectionIndex) {
+    switch (connectionIndex) {
+        case 1:
+            this.outputConnection.classList.remove("Node-connection-active");
+            break;
+        case 2:
+            this.output2Connection.classList.remove("Node-connection-active");
+            break;
+        case 0:
+        default:
+            this.inputConnection.classList.remove("Node-connection-active");
+    }
+};
+
+Node.prototype.getConnectionPoint = function (connectionIndex) {
+    switch (connectionIndex) {
+        case 1:
+            if (this.type === NodeType.CONDITION) {
+                return {x: this.x - nodeWidth / 2, y: this.y, bottom: false};
+            }
+            return {x: this.x, y: this.y + nodeHeight / 2, bottom: true};
+        case 2:
+            return {x: this.x + nodeWidth / 2, y: this.y, bottom: false};
+        default:
+            return {x: this.x, y: this.y - nodeHeight / 2, bottom: false};
+    }
+};
+
 /// Flowchart class
 function Flowchart(options) {
     this.nodes = [];
     this.links = [];
     this.captured = [];
-    this.editable = options ? !!options.editable : true;
+    this.linked = undefined;
+    this.linkIndex = undefined;
+    this.editable = (options && options.editable) ? !!options.editable : true;
+    // DOM Elements
     this.DOMElement = document.createElement("div");
     if (options) {
         if (options.id) this.DOMElement.id = options.id;
@@ -190,12 +249,12 @@ function Flowchart(options) {
     setAttr(this.drawArea, "viewBox", "0 0 " + svgWidth + " " + svgHeight);
     this.drawArea.addEventListener("mouseup", this.dragEndAll.bind(this));
     this.drawArea.addEventListener("mousemove", this.dragAll.bind(this));
-
     this.DOMElement.appendChild(this.drawArea);
 }
 
 Flowchart.prototype.addNode = function (node) {
     node.onCapture = this.nodeHasBeenCaptured.bind(this);
+    node.onConnect = this.nodeHasBeenConnected.bind(this);
     this.nodes.push(node);
     this.drawArea.appendChild(node.DOMElement);
 };
@@ -210,6 +269,12 @@ Flowchart.prototype.dragAll = function (e) {
         for (var i = 0; i < this.captured.length; i++) {
             this.captured[i].drag(k * e.movementX, k * e.movementY);
         }
+        for (var j = 0; j < this.links.length; j++) {
+            if (this.captured.indexOf(this.links[j].to) !== -1 ||
+                this.captured.indexOf(this.links[j].from) !== -1) {
+                this.redrawLink(j);
+            }
+        }
     }
 };
 
@@ -222,9 +287,8 @@ Flowchart.prototype.dragEndAll = function (e) {
 
 Flowchart.prototype.serialize = function () {
     var nodes = [];
-    var nodeRef = {};
+    var links = [];
     for (var i = 0; i < this.nodes.length; i++) {
-        nodeRef[this.nodes[i]] = i;
         nodes.push({
             type: this.nodes[i].type,
             x: this.nodes[i].x,
@@ -232,8 +296,14 @@ Flowchart.prototype.serialize = function () {
             text: this.nodes[i].text
         });
     }
-    // TODO serialize links
-    return {editable: this.editable, nodes: nodes, links: []};
+    for (var j = 0; j < this.links.length; j++) {
+        links.push({
+            from: this.nodes.indexOf(this.links[j].from),
+            to: this.nodes.indexOf(this.links[j].to),
+            type: this.links[j].type
+        });
+    }
+    return {editable: this.editable, nodes: nodes, links: links};
 };
 
 /**
@@ -242,12 +312,107 @@ Flowchart.prototype.serialize = function () {
 Flowchart.prototype.load = function (serializedFlowchart) {
     this.editable = serializedFlowchart.editable !== undefined ? serializedFlowchart.editable : true;
     const nodes = serializedFlowchart.nodes;
+    this.nodes = [];
+    const links = serializedFlowchart.links;
+    this.links = [];
     for (var i = 0; i < nodes.length; i++) {
         var newNode = new Node(nodes[i].type, nodes[i].text);
         newNode.move(nodes[i].x, nodes[i].y);
         this.addNode(newNode);
     }
-    // TODO load links
+    for (var j = 0; j < links.length; j++) {
+        var newLink = {
+            from: this.nodes[links[j].from],
+            to: this.nodes[links[j].to],
+            type: links[j].type,
+            DOMElement: document.createElementNS(xlmns, "path")
+        };
+        newLink.DOMElement.classList.add("Flowchart-link");
+        this.drawArea.appendChild(newLink.DOMElement);
+        this.links.push(newLink);
+        this.redrawLink(this.links.length - 1);
+    }
+};
+
+Flowchart.prototype.nodeHasBeenConnected = function (node, connectionIndex) {
+    if (this.linked === undefined) {
+        this.linked = node;
+        this.linkIndex = connectionIndex;
+    } else {
+        var fromNode, toNode, type;
+        if (this.linkIndex === 0 && connectionIndex > 0) {  // From `node` to `this.linked`
+            type = connectionIndex;
+            fromNode = node;
+            toNode = this.linked;
+        } else if (connectionIndex === 0 && this.linkIndex > 0) {  // From `this.linked` to `node`
+            type = this.linkIndex;
+            fromNode = this.linked;
+            toNode = node;
+        }
+        if (fromNode !== undefined) {
+            this.deleteLinks(fromNode, false, type);
+            var newLink = {
+                from: fromNode,
+                to: toNode,
+                type: type,
+                DOMElement: document.createElementNS(xlmns, "path")
+            };
+            newLink.DOMElement.classList.add("Flowchart-link");
+            this.drawArea.appendChild(newLink.DOMElement);
+            this.links.push(newLink);
+            this.redrawLink(this.links.length - 1);
+        }
+        // Clear connection data
+        node.disableConnection(connectionIndex);
+        this.linked.disableConnection(this.linkIndex);
+        this.linked = undefined;
+        this.linkIndex = undefined;
+    }
+};
+
+Flowchart.prototype.deleteLinks = function (node, incoming, outcomingType) {
+    for (var i = this.links.length - 1; i >= 0; i--) {
+        if (this.links[i].to === node && incoming) {
+            this.deleteLinkByIndex(i);
+        } else if (this.links[i].from === node) {
+            switch (outcomingType) {
+                case 1:  // Normal output
+                case 2:  // Alternative output of condition
+                    if (this.links[i].type === outcomingType) {
+                        this.deleteLinkByIndex(i);
+                    }
+                    break;
+                case 3:  // Any link type
+                    this.deleteLinkByIndex(i);
+                    break;
+            }
+        }
+    }
+};
+
+Flowchart.prototype.deleteLinkByIndex = function (index) {
+    if (this.links[index].DOMElement.parentNode) {
+        this.links[index].DOMElement.parentNode.removeChild(this.links[index].DOMElement);
+    }
+    this.links.splice(index, 1);
+};
+
+Flowchart.prototype.redrawLink = function (index) {
+    var from = this.links[index].from.getConnectionPoint(this.links[index].type);
+    var to = this.links[index].to.getConnectionPoint(0);
+    var path = "M " + from.x + " " + from.y + " C ";
+    if (from.bottom) {
+        path += from.x + " " + (from.y + nodeHeight / 4) + ", ";
+    } else {
+        if (this.links[index].type === 1) {
+            path += (from.x - nodeWidth / 4) + " " + from.y + ", ";
+        } else if (this.links[index].type === 2) {
+            path += (from.x + nodeWidth / 4) + " " + from.y + ", ";
+        }
+    }
+    path += to.x + " " + (to.y - nodeHeight / 4) + ", ";
+    path += to.x + " " + to.y;
+    setAttr(this.links[index].DOMElement, "d", path);
 };
 
 /// Init Flowcharts
