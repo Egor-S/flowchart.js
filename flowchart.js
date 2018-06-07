@@ -401,22 +401,27 @@ Flowchart.prototype.redrawLink = function (index) {
     var fromType = this.links[index].type;
     var from = this.links[index].from.getConnectionPoint(fromType);
     var to = this.links[index].to.getConnectionPoint(0);
-    to.y -= connectionSize;  // Point before final line. To simplify conditions.
+
     var path = "M " + from.x + " " + from.y;
+    to.y -= connectionSize;  // Point before final line. To simplify conditions.
     if (from.bottom) {
         path += " m " + 0 + " " + connectionSize / 2 + " v " + connectionSize / 2;
+        from.y += connectionSize;
     } else if (fromType === 1) {
         path += " m " + -connectionSize / 2 + " " + 0 + " h " + -connectionSize / 2;
+        from.x -= connectionSize;
     } else if (fromType === 2) {
         path += " m " + connectionSize / 2 + " " + 0 + " h " + connectionSize / 2;
+        from.x += connectionSize;
     }
 
-    if (to.y < from.y + connectionSize && from.bottom) {
+    if (to.y < from.y && from.bottom) {
         // Prevent line over node
         path += " h " + (to.x < from.x ? -1 : 1) * (nodeWidth / 2 + connectionSize);
         path += " V " + to.y;
         path += " H " + to.x;
-    } else if (from.bottom || to.y < from.y + connectionSize) {
+    } else if (from.bottom || to.y < from.y ||
+        (!from.bottom && ((fromType === 1 && to.x > from.x) || (fromType === 2 && to.x < from.x)))) {
         path += " V " + to.y;
         path += " H " + to.x;
     } else {
