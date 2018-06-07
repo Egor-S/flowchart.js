@@ -398,20 +398,32 @@ Flowchart.prototype.deleteLinkByIndex = function (index) {
 };
 
 Flowchart.prototype.redrawLink = function (index) {
-    var from = this.links[index].from.getConnectionPoint(this.links[index].type);
+    var fromType = this.links[index].type;
+    var from = this.links[index].from.getConnectionPoint(fromType);
     var to = this.links[index].to.getConnectionPoint(0);
-    var path = "M " + from.x + " " + from.y + " C ";
+    to.y -= connectionSize;  // Point before final line. To simplify conditions.
+    var path = "M " + from.x + " " + from.y;
     if (from.bottom) {
-        path += from.x + " " + (from.y + nodeHeight / 4) + ", ";
-    } else {
-        if (this.links[index].type === 1) {
-            path += (from.x - nodeWidth / 4) + " " + from.y + ", ";
-        } else if (this.links[index].type === 2) {
-            path += (from.x + nodeWidth / 4) + " " + from.y + ", ";
-        }
+        path += " m " + 0 + " " + connectionSize / 2 + " v " + connectionSize / 2;
+    } else if (fromType === 1) {
+        path += " m " + -connectionSize / 2 + " " + 0 + " h " + -connectionSize / 2;
+    } else if (fromType === 2) {
+        path += " m " + connectionSize / 2 + " " + 0 + " h " + connectionSize / 2;
     }
-    path += to.x + " " + (to.y - nodeHeight / 4) + ", ";
-    path += to.x + " " + to.y;
+
+    if (to.y < from.y + connectionSize && from.bottom) {
+        // Prevent line over node
+        path += " h " + (to.x < from.x ? -1 : 1) * (nodeWidth / 2 + connectionSize);
+        path += " V " + to.y;
+        path += " H " + to.x;
+    } else if (from.bottom || to.y < from.y + connectionSize) {
+        path += " V " + to.y;
+        path += " H " + to.x;
+    } else {
+        path += " H " + to.x;
+        path += " V " + to.y;
+    }
+    path += " v " + connectionSize / 2;
     setAttr(this.links[index].DOMElement, "d", path);
 };
 
