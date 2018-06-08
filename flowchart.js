@@ -237,19 +237,36 @@ function Flowchart(options) {
     this.linked = undefined;
     this.linkIndex = undefined;
     this.editable = (options && options.editable) ? !!options.editable : true;
+    this.currentTool = "move";
     // DOM Elements
     this.DOMElement = document.createElement("div");
     if (options) {
         if (options.id) this.DOMElement.id = options.id;
         if (options.classList) this.DOMElement.classList = options.classList;
     }
-    this.DOMElement.classList.add("Flowchart-container");
+    this.DOMElement.classList.add("Flowchart");
+    // Toolbar part
+    this.toolbar = document.createElement("div");
+    this.toolbar.classList.add("Flowchart-toolbar");
+    this.toolbar.appendChild(this.createToolButton("move", "Обзор"));
+    this.toolbar.appendChild(this.createToolButton("action", "Блок действия"));
+    this.toolbar.appendChild(this.createToolButton("io", "Блок ввода/вывода"));
+    this.toolbar.appendChild(this.createToolButton("condition", "Блок условия"));
+    this.toolbar.appendChild(this.createToolButton("delete", "Удалить блок"));
+    this.toolbar.appendChild(this.createToolButton("cut", "Удалить связи"));
+    this.changeTool("move");
+    // Draw part
+    var container = document.createElement("div");
+    container.classList.add("Flowchart-container");
     this.drawArea = document.createElementNS(xlmns, "svg");
     this.drawArea.classList.add("Flowchart-svg");
     setAttr(this.drawArea, "viewBox", "0 0 " + svgWidth + " " + svgHeight);
     this.drawArea.addEventListener("mouseup", this.dragEndAll.bind(this));
     this.drawArea.addEventListener("mousemove", this.dragAll.bind(this));
-    this.DOMElement.appendChild(this.drawArea);
+    // Assemble
+    container.appendChild(this.drawArea);
+    this.DOMElement.appendChild(this.toolbar);
+    this.DOMElement.appendChild(container);
 }
 
 Flowchart.prototype.addNode = function (node) {
@@ -260,7 +277,19 @@ Flowchart.prototype.addNode = function (node) {
 };
 
 Flowchart.prototype.nodeHasBeenCaptured = function (node) {
-    this.captured.push(node);
+    if (this.currentTool === "delete") {
+        if (node.type !== NodeType.END && node.type !== NodeType.START) {
+            this.deleteLinks(node, true, 3);  // Delete all related links
+            var i = this.nodes.indexOf(node);
+            this.drawArea.removeChild(node.DOMElement);
+            this.nodes.splice(i, 1);
+        } else {
+            this.captured.push(node);
+        }
+        this.changeTool("move");
+    } else {
+        this.captured.push(node);
+    }
 };
 
 Flowchart.prototype.dragAll = function (e) {
@@ -430,6 +459,28 @@ Flowchart.prototype.redrawLink = function (index) {
     }
     path += " v " + connectionSize / 2;
     setAttr(this.links[index].DOMElement, "d", path);
+};
+
+Flowchart.prototype.createToolButton = function (tool, title) {
+    var button = document.createElement("img");
+    button.classList.add("Flowchart-tool");
+    button.src = "assets/" + tool + "-icon.svg";
+    button.setAttribute("title", title);
+    button.setAttribute("data-tool", tool);
+    button.addEventListener("click", function () {
+        this.changeTool(tool);
+    }.bind(this));
+    return button;
+};
+
+Flowchart.prototype.changeTool = function (tool) {
+    this.currentTool = tool;
+    for (var i = 0; i < this.toolbar.childNodes.length; i++) {
+        this.toolbar.childNodes[i].classList.remove("active");
+        if (this.toolbar.childNodes[i].getAttribute("data-tool") === tool) {
+            this.toolbar.childNodes[i].classList.add("active");
+        }
+    }
 };
 
 /// Init Flowcharts

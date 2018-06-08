@@ -1,12 +1,38 @@
+.Flowchart {
+    display: flex;
+    justify-content: stretch;
+}
+.Flowchart-toolbar {
+    flex-grow: 0;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+}
+.Flowchart-tool {
+    margin: 2px;
+    width: 32px;
+    height: 32px;
+    border: 1px solid gray;
+    border-radius: 1px;
+}
+.Flowchart-tool:hover {
+    cursor: pointer;
+}
+.Flowchart-tool.active {
+    border-color: #ee0000;
+}
 .Flowchart-container {
-    width: 100%;
-    height: 100%;
+    flex-grow: 1;
+    overflow: hidden;
+    border: 1px solid gray;
 }
 .Flowchart-svg {
-    border: 1px solid gray;
+    width: 1000px;  /* todo */
+    height: 1000px;
 }
 
 .Flowchart-link {
+    pointer-events: none;
     stroke-width: 0.3px;
     stroke: #000000;
     fill: transparent;
