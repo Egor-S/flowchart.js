@@ -89,7 +89,8 @@ Node.prototype.createDOMElement = function () {
     this.DOMElement.appendChild(this.textElement);
     this.move(this.x, this.y);
     // Drag config
-    this.figureElement.addEventListener('mousedown', this.dragStart.bind(this));
+    this.figureElement.addEventListener("mousedown", this.dragStart.bind(this));
+    this.figureElement.addEventListener("dragstart", function () {return false;});
 };
 
 Node.prototype.move = function (x, y) {
@@ -147,10 +148,8 @@ Node.prototype.drag = function (dx, dy) {
 };
 
 Node.prototype.dragStart = function (e) {
-    this.capture();
-    if (this.onCapture) {
-        this.onCapture(this);
-    }
+    this.onCapture(this, e.ctrlKey);
+    e.stopPropagation();
 };
 
 Node.prototype.capture = function () {
@@ -238,6 +237,8 @@ function Flowchart(options) {
     this.linkIndex = undefined;
     this.editable = (options && options.editable) ? !!options.editable : true;
     this.currentTool = "move";
+    this.offsetX = 0;
+    this.offsetY = 0;
     // DOM Elements
     this.DOMElement = document.createElement("div");
     if (options) {
@@ -245,27 +246,36 @@ function Flowchart(options) {
         if (options.classList) this.DOMElement.classList = options.classList;
     }
     this.DOMElement.classList.add("Flowchart");
-    // Toolbar part
+    // Config part
+    var config = document.createElement("div");
+    config.classList.add("Flowchart-config");
     this.toolbar = document.createElement("div");
     this.toolbar.classList.add("Flowchart-toolbar");
+    this.toolbar.appendChild(this.createToolButton("select", "Выделение"));
     this.toolbar.appendChild(this.createToolButton("move", "Обзор"));
     this.toolbar.appendChild(this.createToolButton("action", "Блок действия"));
     this.toolbar.appendChild(this.createToolButton("io", "Блок ввода/вывода"));
     this.toolbar.appendChild(this.createToolButton("condition", "Блок условия"));
     this.toolbar.appendChild(this.createToolButton("delete", "Удалить блок"));
     this.toolbar.appendChild(this.createToolButton("cut", "Удалить связи"));
-    this.changeTool("move");
+    this.changeTool("select");
+    this.textedit = document.createElement("input");
+    this.textedit.classList.add("Flowchart-textedit");
+    this.textedit.addEventListener("input", this.texteditInput.bind(this));
+    this.texteditUpdate();
     // Draw part
     var container = document.createElement("div");
     container.classList.add("Flowchart-container");
     this.drawArea = document.createElementNS(xlmns, "svg");
     this.drawArea.classList.add("Flowchart-svg");
     setAttr(this.drawArea, "viewBox", "0 0 " + svgWidth + " " + svgHeight);
-    this.drawArea.addEventListener("mouseup", this.dragEndAll.bind(this));
-    this.drawArea.addEventListener("mousemove", this.dragAll.bind(this));
+    this.drawArea.addEventListener("mousedown", this.areaClick.bind(this));
+    this.drawArea.addEventListener("mousemove", this.areaMove.bind(this));
     // Assemble
+    config.appendChild(this.toolbar);
+    config.appendChild(this.textedit);
     container.appendChild(this.drawArea);
-    this.DOMElement.appendChild(this.toolbar);
+    this.DOMElement.appendChild(config);
     this.DOMElement.appendChild(container);
 }
 
@@ -273,41 +283,78 @@ Flowchart.prototype.addNode = function (node) {
     node.onCapture = this.nodeHasBeenCaptured.bind(this);
     node.onConnect = this.nodeHasBeenConnected.bind(this);
     this.nodes.push(node);
-    this.drawArea.appendChild(node.DOMElement);
+    // Place new node at the beginning for correct link render
+    if (this.drawArea.firstChild) {
+        this.drawArea.insertBefore(node.DOMElement, this.drawArea.firstChild);
+    } else {
+        this.drawArea.appendChild(node.DOMElement);
+    }
 };
 
-Flowchart.prototype.nodeHasBeenCaptured = function (node) {
+Flowchart.prototype.nodeHasBeenCaptured = function (node, addMode) {
     if (this.currentTool === "delete") {
         if (node.type !== NodeType.END && node.type !== NodeType.START) {
             this.deleteLinks(node, true, 3);  // Delete all related links
             var i = this.nodes.indexOf(node);
             this.drawArea.removeChild(node.DOMElement);
             this.nodes.splice(i, 1);
-        } else {
-            this.captured.push(node);
         }
-        this.changeTool("move");
+        this.changeTool("select");
+        this.texteditUpdate();
     } else {
-        this.captured.push(node);
+        if (!addMode) {
+            this.uncaptureAll();
+        }
+        if (this.captured.indexOf(node) === -1) {
+            node.capture();
+            this.captured.push(node);
+            this.texteditUpdate();
+        }
     }
 };
 
-Flowchart.prototype.dragAll = function (e) {
+Flowchart.prototype.areaClick = function (e) {
+    this.uncaptureAll();
+    var node = undefined;
+    if (this.currentTool === "action") {
+        node = new Node(NodeType.ACTION, "...");
+    } else if (this.currentTool === "condition") {
+        node = new Node(NodeType.CONDITION, "...");
+    } else if (this.currentTool === "io") {  // todo
+        node = new Node(NodeType.OUTPUT, "...");
+    }
+    if (node !== undefined) {
+        const k = svgWidth / this.drawArea.getBoundingClientRect().width;
+        node.move(k * e.offsetX, k * e.offsetY);
+        this.addNode(node);
+        this.changeTool("select");
+        this.nodeHasBeenCaptured(node);
+    }
+    this.texteditUpdate();
+};
+
+Flowchart.prototype.areaMove = function (e) {
+    const k = svgWidth / this.drawArea.getBoundingClientRect().width;
     if (e.buttons === 1) {
-        const k = svgWidth / this.drawArea.clientWidth;
-        for (var i = 0; i < this.captured.length; i++) {
-            this.captured[i].drag(k * e.movementX, k * e.movementY);
-        }
-        for (var j = 0; j < this.links.length; j++) {
-            if (this.captured.indexOf(this.links[j].to) !== -1 ||
-                this.captured.indexOf(this.links[j].from) !== -1) {
-                this.redrawLink(j);
+        if (this.currentTool === "select") {
+            for (var i = 0; i < this.captured.length; i++) {
+                this.captured[i].drag(k * e.movementX, k * e.movementY);
             }
+            for (var j = 0; j < this.links.length; j++) {
+                if (this.captured.indexOf(this.links[j].to) !== -1 ||
+                    this.captured.indexOf(this.links[j].from) !== -1) {
+                    this.redrawLink(j);
+                }
+            }
+        } else if (this.currentTool === "move") {
+            this.offsetX += e.movementX;
+            this.offsetY += e.movementY;
+            this.drawArea.style.transform = "translate(" + this.offsetX + "px, " + this.offsetY + "px)";
         }
     }
 };
 
-Flowchart.prototype.dragEndAll = function (e) {
+Flowchart.prototype.uncaptureAll = function () {
     for (var i = 0; i < this.captured.length; i++) {
         this.captured[i].uncapture();
     }
@@ -364,7 +411,12 @@ Flowchart.prototype.load = function (serializedFlowchart) {
 };
 
 Flowchart.prototype.nodeHasBeenConnected = function (node, connectionIndex) {
-    if (this.linked === undefined) {
+    if (this.currentTool === "cut") {
+        if (connectionIndex === 0) this.deleteLinks(node, true, 0);  // All incoming
+        else this.deleteLinks(node, false, connectionIndex);
+        node.disableConnection(connectionIndex);
+        this.changeTool("select");
+    } else if (this.linked === undefined) {
         this.linked = node;
         this.linkIndex = connectionIndex;
     } else {
@@ -483,6 +535,23 @@ Flowchart.prototype.changeTool = function (tool) {
     }
 };
 
+Flowchart.prototype.texteditInput = function (e) {
+    if (this.captured.length === 1) {
+        this.captured[0].text = this.textedit.value;
+        this.captured[0].updateText();
+    }
+};
+
+Flowchart.prototype.texteditUpdate = function () {
+    if (this.captured.length !== 1) {
+        this.textedit.value = "Выберите один блок";
+        this.textedit.disabled = true;
+    } else {
+        this.textedit.value = this.captured[0].text;
+        this.textedit.disabled = false;
+    }
+};
+
 /// Init Flowcharts
 /**
  * Replace all <Flowchart> tags with Flowchart.DOMElement.
@@ -497,6 +566,13 @@ window.addEventListener("load", function () {
 
         if (window.localStorage.flowchart !== undefined) {  // TODO test only
             flowchart.load(JSON.parse(window.localStorage.flowchart));
+        } else {
+            var begin = new Node(NodeType.START, "Начало");
+            var end = new Node(NodeType.END, "Конец");
+            flowchart.addNode(begin);
+            flowchart.addNode(end);
+            begin.move(nodeWidth, nodeWidth);
+            end.move(nodeWidth, 2 * nodeWidth);
         }
 
         var newTag = flowchart.DOMElement;
