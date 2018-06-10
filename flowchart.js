@@ -249,16 +249,7 @@ function Flowchart(options) {
     // Config part
     var config = document.createElement("div");
     config.classList.add("Flowchart-config");
-    this.toolbar = document.createElement("div");
-    this.toolbar.classList.add("Flowchart-toolbar");
-    this.toolbar.appendChild(this.createToolButton("select", "Выделение"));
-    this.toolbar.appendChild(this.createToolButton("move", "Обзор"));
-    this.toolbar.appendChild(this.createToolButton("action", "Блок действия"));
-    this.toolbar.appendChild(this.createToolButton("io", "Блок ввода/вывода"));
-    this.toolbar.appendChild(this.createToolButton("condition", "Блок условия"));
-    this.toolbar.appendChild(this.createToolButton("delete", "Удалить блок"));
-    this.toolbar.appendChild(this.createToolButton("cut", "Удалить связи"));
-    this.changeTool("select");
+    this.createToolbar();
     this.textedit = document.createElement("input");
     this.textedit.classList.add("Flowchart-textedit");
     this.textedit.addEventListener("input", this.texteditInput.bind(this));
@@ -269,8 +260,10 @@ function Flowchart(options) {
     this.drawArea = document.createElementNS(xlmns, "svg");
     this.drawArea.classList.add("Flowchart-svg");
     setAttr(this.drawArea, "viewBox", "0 0 " + svgWidth + " " + svgHeight);
+    this.drawArea.style.width = "1000px";  // Default zoom
+    this.drawArea.style.height = "1000px";
     this.drawArea.addEventListener("mousedown", this.areaClick.bind(this));
-    this.drawArea.addEventListener("mousemove", this.areaMove.bind(this));
+    container.addEventListener("mousemove", this.areaMove.bind(this));
     // Assemble
     config.appendChild(this.toolbar);
     config.appendChild(this.textedit);
@@ -550,6 +543,38 @@ Flowchart.prototype.texteditUpdate = function () {
         this.textedit.value = this.captured[0].text;
         this.textedit.disabled = false;
     }
+};
+
+Flowchart.prototype.createToolbar = function () {
+    this.toolbar = document.createElement("div");
+    this.toolbar.classList.add("Flowchart-toolbar");
+    this.toolbar.appendChild(this.createToolButton("select", "Выделение"));
+    this.toolbar.appendChild(this.createToolButton("move", "Обзор"));
+    this.toolbar.appendChild(this.createToolButton("action", "Блок действия"));
+    this.toolbar.appendChild(this.createToolButton("io", "Блок ввода/вывода"));
+    this.toolbar.appendChild(this.createToolButton("condition", "Блок условия"));
+    this.toolbar.appendChild(this.createToolButton("delete", "Удалить блок"));
+    this.toolbar.appendChild(this.createToolButton("cut", "Удалить связи"));
+    this.changeTool("select");
+    
+    var zoomin = document.createElement("img");
+    zoomin.classList.add("Flowchart-tool");
+    zoomin.src = "assets/zoom-in-icon.svg";
+    zoomin.setAttribute("title", "Приблизить");
+    zoomin.addEventListener("click", function () {
+        this.drawArea.style.width = this.drawArea.getBoundingClientRect().width * 1.3 + "px";
+        this.drawArea.style.height = this.drawArea.getBoundingClientRect().height * 1.3 + "px";
+    }.bind(this));
+    this.toolbar.appendChild(zoomin);
+    var zoomout = document.createElement("img");
+    zoomout.classList.add("Flowchart-tool");
+    zoomout.src = "assets/zoom-out-icon.svg";
+    zoomout.setAttribute("title", "Отдалить");
+    zoomout.addEventListener("click", function () {
+        this.drawArea.style.width = this.drawArea.getBoundingClientRect().width / 1.3 + "px";
+        this.drawArea.style.height = this.drawArea.getBoundingClientRect().height / 1.3 + "px";
+    }.bind(this));
+    this.toolbar.appendChild(zoomout);
 };
 
 /// Init Flowcharts

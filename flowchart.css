@@ -37,10 +37,13 @@
     overflow: hidden;
     border: 1px solid gray;
     background-color: #eeeeee;
+
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 .Flowchart-svg {
-    width: 1000px;  /* todo */
-    height: 1000px;
     background-color: #ffffff;
 }
 
@@ -52,10 +55,6 @@
 }
 
 .Node-figure {
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
     stroke-width: 0.3px;
     stroke: #000000;
     fill: #ffffff;
